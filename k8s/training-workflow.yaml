@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: ml-train-demo-
+  namespace: argo
+spec:
+  entrypoint: train
+  archiveLogs: false
+  templates:
+    - name: train
+      container:
+        image: ml-train-demo:local
+        imagePullPolicy: IfNotPresent
+        command: ["/app/.venv/bin/train"]
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+          limits:
+            cpu: "1"
+            memory: "1Gi"

@@ -6,7 +6,7 @@ Experiment with creating a minimal ML training demo
 - [x] Step 1 — local `kind` cluster
 - [x] Step 2 — containerized training job (CPU-only)
 - [x] Step 3 — training job on local Kubernetes
-- [ ] Step 4 — Argo Workflows (local)
+- [x] Step 4 — Argo Workflows (local)
 - [ ] Step 5 — CI image build/push
 - [ ] Step 6 — Terraform for EKS (stretch)
 
@@ -54,3 +54,42 @@ kubectl delete -f k8s/training-job.yaml
 `kind` runs its own containerd, separate from the host Docker image store,
 so a locally built image must be loaded into the cluster with
 `kind load docker-image` before a `Job` can reference it.
+
+## Running as an Argo Workflow
+
+The `k8s/training-job.yaml` `Job` is also expressed as a single-step Argo
+`Workflow` (`k8s/training-workflow.yaml`) — same container, orchestrated
+by Argo instead of the plain Job controller.
+
+Install Argo Workflows (quick-start, minimal):
+
+```sh
+kubectl create namespace argo
+kubectl apply -n argo -f https://github.com/argoproj/argo-workflows/releases/download/v3.6.5/quick-start-minimal.yaml
+```
+
+The quick-start bundle ships a demo MinIO artifact store and httpbin
+deployment that aren't needed here and aren't reliably schedulable on a
+minimal `kind` node; remove them and the default artifact-repository
+config (which forces log archiving to that MinIO) so workflows don't
+hang waiting for it:
+
+```sh
+kubectl -n argo delete configmap artifact-repositories
+kubectl -n argo delete deploy/minio deploy/httpbin service/minio service/httpbin \
+  secret/my-minio-cred secret/my-httpbin-cred
+```
+
+Run the workflow:
+
+```sh
+docker build -t ml-train-demo:local .
+kind load docker-image ml-train-demo:local
+kubectl create -f k8s/training-workflow.yaml
+kubectl -n argo get wf
+kubectl -n argo logs -l workflows.argoproj.io/workflow=<workflow-name> -c main
+```
+
+Note: the container's `command` is specified explicitly in the workflow
+template — Argo's executor otherwise tries to look up the entrypoint by
+pulling the image from Docker Hub, which fails for a local-only image.
