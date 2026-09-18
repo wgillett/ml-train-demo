@@ -94,6 +94,34 @@ data "aws_iam_policy_document" "iam_bootstrap" {
   }
 
   statement {
+    # EKS checks for its own AWS-owned service-linked role before
+    # creating a managed node group — a different role, outside the
+    # ml-train-demo-* prefix, that the ScopedRoleManagement statement
+    # below deliberately doesn't cover. Scoped to this one specific SLR.
+    sid       = "EksNodegroupServiceLinkedRoleRead"
+    effect    = "Allow"
+    actions   = ["iam:GetRole"]
+    resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/aws-service-role/eks-nodegroup.amazonaws.com/AWSServiceRoleForAmazonEKSNodegroup"]
+  }
+
+  statement {
+    # Split from the read above for the same reason ScopedRoleCreate is
+    # split from ScopedRoleManagement: iam:AWSServiceName only exists in
+    # CreateServiceLinkedRole's request context, so combining it with
+    # GetRole in one statement would silently deny GetRole too.
+    sid       = "EksNodegroupServiceLinkedRoleCreate"
+    effect    = "Allow"
+    actions   = ["iam:CreateServiceLinkedRole"]
+    resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/aws-service-role/eks-nodegroup.amazonaws.com/AWSServiceRoleForAmazonEKSNodegroup"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "iam:AWSServiceName"
+      values   = ["eks-nodegroup.amazonaws.com"]
+    }
+  }
+
+  statement {
     sid    = "ScopedRoleManagement"
     effect = "Allow"
     actions = [

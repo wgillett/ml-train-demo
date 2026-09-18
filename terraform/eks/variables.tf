@@ -1,0 +1,63 @@
+variable "aws_region" {
+  description = "AWS region for the EKS cluster and its VPC"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "cluster_name" {
+  description = "EKS cluster name"
+  type        = string
+  default     = "ml-train-demo"
+}
+
+variable "cluster_version" {
+  description = "Kubernetes version for the EKS control plane. A cluster past AWS's standard support window costs an EXTRA ~$0.60/hr in \"extended support\" pricing on top of the normal ~$0.10/hr — check the current standard-support version list before applying, not just whether a version exists."
+  type        = string
+  default     = "1.34"
+}
+
+variable "vpc_cidr" {
+  description = "CIDR block for the cluster's VPC"
+  type        = string
+  default     = "10.60.0.0/16"
+}
+
+variable "az_count" {
+  description = "Number of availability zones to spread subnets across (kept small to limit NAT/subnet count)"
+  type        = number
+  default     = 2
+}
+
+variable "node_instance_types" {
+  description = "CPU-only instance types for the managed node group"
+  type        = list(string)
+  default     = ["t3.medium"]
+}
+
+variable "node_desired_size" {
+  description = "Desired node count (kept small — this is a demo workload, not production capacity)"
+  type        = number
+  default     = 1
+}
+
+variable "node_min_size" {
+  type    = number
+  default = 1
+}
+
+variable "node_max_size" {
+  type    = number
+  default = 2
+}
+
+variable "role_permissions_boundary_arn" {
+  description = "Permissions boundary applied to every IAM role this module creates. Must match terraform/bootstrap's boundary — the ml-train-demo-admin user can only CreateRole for ml-train-demo-* roles when this exact boundary is attached (see terraform/bootstrap/iam.tf)."
+  type        = string
+  default     = "arn:aws:iam::aws:policy/PowerUserAccess"
+}
+
+variable "resource_prefix" {
+  description = "Prefix for role names this module creates, matching the ml-train-demo-* scope the bootstrap user's IAM policy grants"
+  type        = string
+  default     = "ml-train-demo"
+}
