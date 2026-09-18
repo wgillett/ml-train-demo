@@ -5,7 +5,6 @@ description = "Minimal containerized ML training demo for the infra/MLOps platfo
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "torch>=2.5",
     "numpy>=1.26",
 ]
 
@@ -19,21 +18,46 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/ml_train_demo"]
 
-[tool.uv.sources]
-torch = [{ index = "pytorch-cpu" }]
-
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
-
+# torch comes from one of two mutually exclusive groups (uv's documented
+# PyTorch pattern): `cpu` pulls the CPU-only wheels, `gpu` the CUDA 12.6
+# build (which bundles its own CUDA runtime as nvidia-* packages, so the
+# container still needs no CUDA base image, only a host driver). `cpu` is
+# a default group so local `uv sync` / `uv run train` are unchanged; the
+# Dockerfile selects the variant explicitly. Groups rather than extras
+# because this is an application, not a library, and extras can't be
+# defaulted.
 [dependency-groups]
+cpu = ["torch>=2.5"]
+gpu = ["torch>=2.5"]
 dev = [
     "ruff>=0.7",
     "mypy>=1.13",
     "pytest>=8.3",
     "pre-commit>=4.0",
 ]
+
+[tool.uv]
+default-groups = ["dev", "cpu"]
+conflicts = [[{ group = "cpu" }, { group = "gpu" }]]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", group = "cpu" },
+    { index = "pytorch-cu126", group = "gpu", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+# CUDA 12.6 rather than 13.0: cu130 wheels need a >= 580 host driver, and
+# the EKS NVIDIA AMI's driver version isn't something to bet a runtime-only
+# failure on. torch 2.14 ships cu126 and cu130 wheels (no cu128).
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
 
 [tool.ruff]
 line-length = 100

@@ -17,6 +17,7 @@ and troubleshooting notes from things that broke while building this.
 - [x] Step 4 — Argo Workflows (local)
 - [x] Step 5 — CI image build/push
 - [x] Step 6 — Terraform for EKS (stretch; applied once, verified, destroyed — not left running)
+- [ ] Post-day-1 — GPU training job on an EKS GPU node group (branch `gpu`: code complete, pending a live run)
 
 ## Architecture
 
@@ -31,17 +32,18 @@ GitHub
 AWS                                                                          v
   IAM: bootstrap user, CI role, OIDC provider  (terraform/bootstrap)
   ECR: ml-train-demo image repo                (image pushed by CI)
-  VPC + EKS + node group                       (terraform/eks —
-                                                 plan-validated; applied +
-                                                 destroyed once for
-                                                 verification, not left
-                                                 running, see cost notes
-                                                 in terraform/eks/README.md)
+  VPC + EKS + CPU node group                   (terraform/eks — applied +
+                                                 destroyed per demo, never
+                                                 left running; cost notes in
+                                                 terraform/eks/README.md)
+    + GPU node group, scale-to-zero            (g4dn.xlarge, EKS NVIDIA AMI,
+      + NVIDIA device plugin                     tainted; k8s/gpu/)
+      -> GPU training Job                       (same image, TORCH_VARIANT=gpu)
 ```
 
 Explicitly deferred (require real AWS, not exercised here — see
-`CLAUDE.md` for the full list): GPU node group, multi-node DDP training,
-IRSA, Argo CD GitOps deploy, S3/Arrow data path, Prometheus/Grafana.
+`CLAUDE.md` for the full list): multi-node DDP training, IRSA, Argo CD
+GitOps deploy, S3/Arrow data path, Prometheus/Grafana.
 
 ## Local cluster
 
@@ -66,9 +68,14 @@ docker build -t ml-train-demo .
 docker run --rm ml-train-demo      # containerized
 ```
 
-`torch` is pinned to the CPU-only wheel index
-(`download.pytorch.org/whl/cpu`) so the image doesn't pull in CUDA/NVIDIA
-dependencies it can't use locally.
+`torch` comes from one of two mutually exclusive dependency groups:
+`cpu` (the default — CPU-only wheels, so the local image doesn't pull in
+CUDA/NVIDIA dependencies it can't use) or `gpu` (CUDA 12.6 build). The
+Dockerfile's `TORCH_VARIANT` build arg picks one; `docker build .` is
+the CPU image, `--build-arg TORCH_VARIANT=gpu` the GPU one (see
+[GPU on EKS](#gpu-on-eks)). The script itself is device-agnostic and
+logs which it got: `device=cpu device_name='cpu'` vs
+`device=cuda device_name='Tesla T4'`.
 
 ## Running on local Kubernetes
 
@@ -166,3 +173,53 @@ applied) and the apply-then-destroy-same-session workflow if you do want
 to see it actually running. This repo's own history: applied once,
 verified with `kubectl get nodes`, destroyed immediately after — not
 left running between sessions.
+
+## GPU on EKS
+
+The same training script on a single NVIDIA GPU. Everything local stays
+CPU-only and unchanged; the GPU path is purely additive:
+
+- **Image**: `--build-arg TORCH_VARIANT=gpu` on the same Dockerfile
+  (CUDA 12.6 torch, ~3.8 GB vs ~1.2 GB). Built on demand, not on every
+  push: the CI workflow's "Run workflow" button (`workflow_dispatch`,
+  run from `main` — the CI role's trust is pinned there) pushes
+  `gpu-<sha>` to ECR.
+- **Node group**: `gpu` in `terraform/eks` — `g4dn.xlarge` (one T4),
+  the EKS NVIDIA AMI (driver + container toolkit included), tainted
+  `nvidia.com/gpu=true:NoSchedule`, scale-to-zero by default.
+- **Device plugin**: `k8s/gpu/nvidia-device-plugin.yaml` (vendored
+  v0.20.0, pinned to the GPU node group) advertises `nvidia.com/gpu`
+  to the scheduler; `k8s/gpu/training-job.yaml` requests one.
+
+Before anything else, check the account's quota for G instances — new
+and personal accounts commonly have it at **zero**, and the node group
+would just never come up:
+
+```sh
+aws service-quotas get-service-quota --service-code ec2 --quota-code L-DB2E81BA \
+  --query Quota.Value   # in vCPUs; g4dn.xlarge needs 4
+```
+
+Then, with the GPU node the hourly rate roughly quadruples (see
+`terraform/eks/README.md`), so same-session teardown matters more:
+
+```sh
+cd terraform/eks
+terraform apply -var gpu_node_desired_size=1
+aws eks update-kubeconfig --region us-east-1 --name ml-train-demo
+kubectl apply -f ../../k8s/gpu/nvidia-device-plugin.yaml
+kubectl get nodes -L accelerator                                   # gpu node Ready
+kubectl get node -l accelerator=nvidia-gpu -o jsonpath='{.items[0].status.allocatable.nvidia\.com/gpu}'   # 1
+
+ECR_IMAGE="$(cd ../bootstrap && terraform output -raw ecr_repository_url):gpu-<sha>"
+sed "s|ECR_IMAGE|$ECR_IMAGE|" ../../k8s/gpu/training-job.yaml | kubectl apply -f -
+kubectl logs job/ml-train-demo-gpu -f     # device=cuda device_name='Tesla T4'
+terraform destroy
+```
+
+Building the GPU image locally instead of via CI works too, but it must
+target the nodes' architecture (an Apple-silicon Mac builds arm64 by
+default): `docker build --platform linux/amd64 --build-arg
+TORCH_VARIANT=gpu -t <ecr-url>:gpu-local .`, then
+`aws ecr get-login-password | docker login --username AWS
+--password-stdin <ecr-url>` and push.

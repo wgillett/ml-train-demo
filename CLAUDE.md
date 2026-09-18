@@ -74,7 +74,7 @@ Work top to bottom. Stop at whatever step you reach — each is a coherent check
 
 ## Explicitly Deferred (post-day-1, requires AWS)
 
-- GPU node group + device plugin + driver DaemonSet on EKS (cannot test locally — no local GPU)
+- ~~GPU node group + device plugin + driver DaemonSet on EKS~~ — done post-day-1 (see below)
 - Multi-node DDP training on real GPUs
 - Argo CD GitOps deploy against the EKS cluster
 - S3 + Arrow data-access pattern (can be stubbed with local files at day-1 scope)
@@ -82,6 +82,15 @@ Work top to bottom. Stop at whatever step you reach — each is a coherent check
 - IRSA setup for pod-level AWS permissions
 
 State this list explicitly in the README rather than implying the project is more complete than it is.
+
+## Post-Day-1 Additions
+
+### GPU training on EKS (single GPU, no DDP)
+- Additive only — every local/CPU path (kind, the default Dockerfile build, the existing Job/Workflow manifests, CI on push) stays unchanged and CPU-only.
+- One Dockerfile, `TORCH_VARIANT=cpu|gpu` build arg, backed by two conflicting uv dependency groups (`cpu` default). GPU image is built on demand via `workflow_dispatch`, not on every push (multi-GB).
+- `gpu` managed node group in `terraform/eks`: `g4dn.xlarge`, EKS NVIDIA AMI, tainted, **0 nodes by default**. Vendored NVIDIA device plugin + a GPU `Job` under `k8s/gpu/`.
+- Same apply → verify → destroy-same-session discipline as Step 6; the GPU node roughly quadruples the hourly cost.
+- Multi-node DDP remains deferred: it's a script-level change (`DistributedDataParallel`, `torchrun`), not more infrastructure.
 
 ## Conventions
 

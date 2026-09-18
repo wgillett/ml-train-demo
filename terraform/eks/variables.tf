@@ -55,6 +55,18 @@ variable "node_max_size" {
   default = 2
 }
 
+variable "gpu_node_instance_types" {
+  description = "GPU instance types for the gpu node group. g4dn.xlarge (one NVIDIA T4) is the cheapest common choice at ~$0.53/hr — still >10x the CPU node. New/personal accounts often have a ZERO quota for G instances; check before applying (see README)."
+  type        = list(string)
+  default     = ["g4dn.xlarge"]
+}
+
+variable "gpu_node_desired_size" {
+  description = "GPU node count at creation. Defaults to 0 so the group costs nothing until a demo actually needs it. NOTE: the eks module ignores later changes to desired_size (so it doesn't fight autoscalers) — set this on a fresh apply, or scale the node group via the AWS CLI afterwards."
+  type        = number
+  default     = 0
+}
+
 variable "role_permissions_boundary_arn" {
   description = "Permissions boundary applied to every IAM role this module creates. Must match terraform/bootstrap's boundary — the ml-train-demo-admin user can only CreateRole for ml-train-demo-* roles when this exact boundary is attached (see terraform/bootstrap/iam.tf)."
   type        = string

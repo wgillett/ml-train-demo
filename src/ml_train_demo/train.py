@@ -40,7 +40,8 @@ def build_model(num_features: int) -> nn.Module:
 
 def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"device={device}", flush=True)
+    device_name = torch.cuda.get_device_name(0) if device.type == "cuda" else "cpu"
+    print(f"device={device} device_name={device_name!r}", flush=True)
 
     x, y = make_synthetic_data(NUM_SAMPLES, NUM_FEATURES)
     x, y = x.to(device), y.to(device)

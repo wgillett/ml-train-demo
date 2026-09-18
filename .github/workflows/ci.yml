@@ -3,6 +3,15 @@ name: CI
 on:
   push:
     branches: [main]
+  # The GPU image is several GB and only needed for an EKS GPU demo, so
+  # it's built on demand rather than on every push.
+  workflow_dispatch:
+    inputs:
+      torch_variant:
+        description: "Which torch build to bake into the image"
+        type: choice
+        options: [cpu, gpu]
+        default: gpu
 
 permissions:
   id-token: write # required to assume the AWS role via OIDC
@@ -24,7 +33,8 @@ jobs:
       - name: Build and push training image
         env:
           ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
-          IMAGE_TAG: ${{ github.sha }}
+          TORCH_VARIANT: ${{ inputs.torch_variant || 'cpu' }}
+          IMAGE_TAG: ${{ inputs.torch_variant == 'gpu' && format('gpu-{0}', github.sha) || github.sha }}
         run: |
-          docker build -t "$ECR_REPOSITORY_URL:$IMAGE_TAG" .
+          docker build --build-arg TORCH_VARIANT="$TORCH_VARIANT" -t "$ECR_REPOSITORY_URL:$IMAGE_TAG" .
           docker push "$ECR_REPOSITORY_URL:$IMAGE_TAG"

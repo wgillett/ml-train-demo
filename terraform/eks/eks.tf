@@ -62,5 +62,55 @@ module "eks" {
       iam_role_name            = "${var.resource_prefix}-eks-node"
       iam_role_use_name_prefix = false
     }
+
+    # Single-GPU node group for the GPU training demo. The EKS NVIDIA AMI
+    # ships the driver and container toolkit; the device plugin that
+    # advertises nvidia.com/gpu to the scheduler is applied separately
+    # (k8s/gpu/nvidia-device-plugin.yaml). Tainted so only GPU work lands
+    # on the expensive node. Sized to 0 by default — see the variable.
+    gpu = {
+      # Stable name (no timestamp suffix) so `aws eks update-nodegroup-config
+      # --nodegroup-name gpu` works without looking the name up first.
+      name            = "gpu"
+      use_name_prefix = false
+
+      instance_types = var.gpu_node_instance_types
+      ami_type       = "AL2023_x86_64_NVIDIA"
+      capacity_type  = "ON_DEMAND"
+
+      desired_size = var.gpu_node_desired_size
+      min_size     = 0
+      max_size     = 1
+
+      iam_role_name            = "${var.resource_prefix}-eks-gpu-node"
+      iam_role_use_name_prefix = false
+
+      # What k8s/gpu/nvidia-device-plugin.yaml's nodeSelector keys on.
+      labels = {
+        accelerator = "nvidia-gpu"
+      }
+
+      taints = {
+        gpu = {
+          key    = "nvidia.com/gpu"
+          value  = "true"
+          effect = "NO_SCHEDULE"
+        }
+      }
+
+      # The CUDA-build training image is several GB uncompressed; the
+      # default 20 GB root volume is too tight once the AMI's own driver
+      # stack is on it.
+      block_device_mappings = {
+        xvda = {
+          device_name = "/dev/xvda"
+          ebs = {
+            volume_size           = 50
+            volume_type           = "gp3"
+            delete_on_termination = true
+          }
+        }
+      }
+    }
   }
 }

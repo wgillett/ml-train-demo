@@ -1,0 +1,31 @@
+# GPU variant of k8s/training-job.yaml, for the EKS GPU node group only.
+# The image is the gpu-<sha> tag CI pushes to ECR; substitute it in
+# (see README "GPU on EKS") — there is no local-registry equivalent.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ml-train-demo-gpu
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: train
+          image: ECR_IMAGE
+          resources:
+            requests:
+              cpu: "1"
+              memory: "2Gi"
+            limits:
+              # An extended resource: requesting it is what makes the
+              # scheduler place this pod on a node the device plugin has
+              # advertised a GPU on. Request and limit must be equal, and
+              # a limit alone implies the request.
+              nvidia.com/gpu: 1
+              cpu: "2"
+              memory: "4Gi"

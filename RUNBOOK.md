@@ -90,16 +90,26 @@ breakdown, including a nasty surprise about EKS "extended support"
 pricing — see below). `terraform destroy` in the same session; don't
 leave it running between demo sessions.
 
+### 8. GPU training on EKS (post-day-1)
+
+Same script, one NVIDIA GPU. Nothing in steps 1–4 changes — the GPU
+path is additive: a `TORCH_VARIANT=gpu` image build, a scale-to-zero
+`gpu` node group in `terraform/eks`, the NVIDIA device plugin, and a
+GPU `Job` manifest (`k8s/gpu/`). Full command sequence in README
+("GPU on EKS"); node-group gotchas (G-instance **quota**, `desired_size`
+only honored at creation, driver/CUDA version) in
+`terraform/eks/README.md`. Roughly 4x the hourly cost of the CPU-only
+cluster while the GPU node is up — same-session `terraform destroy`.
+
 ## What "done" would look like
 
 Everything below requires real AWS and isn't exercised by this repo —
 stubbed, plan-validated, or left as a documented gap instead:
 
-- **GPU node group** — managed node group on a GPU AMI + NVIDIA device
-  plugin DaemonSet. No local GPU to test against.
-- **Multi-node DDP training** — the training script is single-process;
-  real distributed data-parallel training needs actual GPU nodes to be
-  worth exercising.
+- **Multi-node DDP training** — single-GPU training now exists (step 8),
+  but the script is still single-process: real distributed data-parallel
+  training needs `DistributedDataParallel` + `torchrun`-style process
+  groups in the script and more than one GPU to be worth exercising.
 - **IRSA** — pod-level AWS IAM permissions via a cluster OIDC provider.
   Deliberately disabled in `terraform/eks` (`enable_irsa = false`) since
   nothing in this repo needs AWS API access from inside a pod yet.

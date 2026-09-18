@@ -22,6 +22,29 @@ resource "aws_ecr_lifecycle_policy" "training_image" {
           countNumber = 14
         }
         action = { type = "expire" }
+      },
+      {
+        # GPU images are ~4-5 GB each and tagged images never age out
+        # on their own; keep only the two most recent.
+        rulePriority = 2
+        description  = "Keep only the 2 most recent gpu-* images"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["gpu-"]
+          countType     = "imageCountMoreThan"
+          countNumber   = 2
+        }
+        action = { type = "expire" }
+      },
+      {
+        rulePriority = 3
+        description  = "Keep at most 10 images overall"
+        selection = {
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = 10
+        }
+        action = { type = "expire" }
       }
     ]
   })
