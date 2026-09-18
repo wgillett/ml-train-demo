@@ -1,5 +1,13 @@
 # ml-train-demo
-Experiment with creating a minimal ML training demo
+
+Minimal ML training demo built as a vehicle for exercising the
+infra/MLOps platform seam — Terraform, Kubernetes, GitOps-style
+orchestration, CI, containerized ML workloads. The training script
+itself is intentionally trivial (see [Training job](#training-job));
+the point is the platform around it, not the model.
+
+See `RUNBOOK.md` for how to reproduce everything locally, known gaps,
+and troubleshooting notes from things that broke while building this.
 
 ## Status
 
@@ -8,11 +16,32 @@ Experiment with creating a minimal ML training demo
 - [x] Step 3 — training job on local Kubernetes
 - [x] Step 4 — Argo Workflows (local)
 - [x] Step 5 — CI image build/push
-- [ ] Step 6 — Terraform for EKS (stretch)
+- [x] Step 6 — Terraform for EKS (stretch; applied once, verified, destroyed — not left running)
 
-See `CLAUDE.md` for the full plan and explicitly deferred items (GPU node
-group, multi-node DDP, Argo CD, S3/Arrow data path, Prometheus/Grafana,
-IRSA — all require AWS and are out of scope for the local demo).
+## Architecture
+
+```
+Local (kind)
+  Argo Workflow -> Job Pod -> container
+                              (CPU-only PyTorch, synthetic data)
+
+GitHub
+  push to main -> GitHub Actions (ci.yml) -> OIDC AssumeRoleWithWebIdentity -+
+                                                                              |
+AWS                                                                          v
+  IAM: bootstrap user, CI role, OIDC provider  (terraform/bootstrap)
+  ECR: ml-train-demo image repo                (image pushed by CI)
+  VPC + EKS + node group                       (terraform/eks —
+                                                 plan-validated; applied +
+                                                 destroyed once for
+                                                 verification, not left
+                                                 running, see cost notes
+                                                 in terraform/eks/README.md)
+```
+
+Explicitly deferred (require real AWS, not exercised here — see
+`CLAUDE.md` for the full list): GPU node group, multi-node DDP training,
+IRSA, Argo CD GitOps deploy, S3/Arrow data path, Prometheus/Grafana.
 
 ## Local cluster
 
@@ -117,3 +146,23 @@ are set as GitHub repo variables (`ECR_REPOSITORY_URL`,
 ECR on every push to `main`, tagged by commit SHA. Authenticates via
 OIDC (`aws-actions/configure-aws-credentials`, assuming the role from
 `terraform/bootstrap`) — no static AWS keys stored in GitHub.
+
+## EKS (Terraform, stretch)
+
+`terraform/eks` provisions a VPC + EKS cluster + CPU-only managed node
+group, using the `terraform-aws-modules/vpc` and `.../eks` community
+modules. Unlike `terraform/bootstrap`, this is hourly-billed
+infrastructure — **`terraform plan` is the default, cost-free stopping
+point**:
+
+```sh
+cd terraform/eks
+terraform init
+terraform plan
+```
+
+See `terraform/eks/README.md` for the full cost breakdown (~$3-4/day if
+applied) and the apply-then-destroy-same-session workflow if you do want
+to see it actually running. This repo's own history: applied once,
+verified with `kubectl get nodes`, destroyed immediately after — not
+left running between sessions.
