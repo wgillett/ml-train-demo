@@ -7,7 +7,7 @@ Experiment with creating a minimal ML training demo
 - [x] Step 2 — containerized training job (CPU-only)
 - [x] Step 3 — training job on local Kubernetes
 - [x] Step 4 — Argo Workflows (local)
-- [ ] Step 5 — CI image build/push
+- [x] Step 5 — CI image build/push
 - [ ] Step 6 — Terraform for EKS (stretch)
 
 See `CLAUDE.md` for the full plan and explicitly deferred items (GPU node
