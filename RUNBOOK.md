@@ -139,7 +139,7 @@ anyway. Diagnosed by temporarily decoding the OIDC token's payload in
 CI (never the raw token) — see git history on `.github/workflows/ci.yml`
 for the debug step, since removed.
 
-### EKS: service-linked role check needs its own IAM grant
+### EKS: service-linked role check needs its own IAM grant — and the *right* ARN form
 
 Creating the first managed node group in an account, EKS checks whether
 `AWSServiceRoleForAmazonEKSNodegroup` (an AWS-owned service-linked role,
@@ -147,6 +147,34 @@ not one of ours) already exists — that check needs `iam:GetRole` on that
 specific role, outside anything a `ml-train-demo-*`-scoped policy
 covers. Needed a narrow, separately-scoped grant
 (`EksNodegroupServiceLinkedRoleRead`/`...Create` in `iam.tf`).
+
+First attempt at this still failed with the identical error even though
+the granted `Resource` looked exactly right
+(`role/aws-service-role/eks-nodegroup.amazonaws.com/AWSServiceRoleForAmazonEKSNodegroup`).
+Root cause, found by testing the exact same call directly
+(`aws iam get-role --role-name AWSServiceRoleForAmazonEKSNodegroup`) and
+reading its AccessDenied message closely: since the role doesn't exist
+yet, `GetRole` (called by name, not ARN) can't resolve a real object to
+find its actual path, so IAM authorizes against the *bare* role ARN
+(`role/AWSServiceRoleForAmazonEKSNodegroup`, no `aws-service-role/.../`
+prefix) — not the path it will actually get once created. Fixed by
+granting both ARN forms. Confirmed fixed by re-running the same direct
+`aws iam get-role` test and seeing it flip from `AccessDenied` to
+`NoSuchEntity` (the "right kind" of failure — authorized, just doesn't
+exist yet) before ever touching Terraform again.
+
+### EKS module doesn't grant the creator kubectl access by default
+
+`terraform-aws-modules/eks/aws` v20 does **not** automatically give the
+IAM principal that creates the cluster any Kubernetes RBAC access.
+`aws eks update-kubeconfig` succeeds (that's just an AWS API call), but
+`kubectl get nodes` then fails with `the server has asked for the
+client to provide credentials` — IAM auth to AWS works fine, there's
+just no mapping from that identity to any Kubernetes permissions at
+all. Fix: `enable_cluster_creator_admin_permissions = true`. Side
+effect worth knowing: this makes the creating IAM user's AWS
+credentials *also* a Kubernetes cluster-admin credential — see the
+security notes in `terraform/eks/README.md`.
 
 ### EKS minor version upgrades are sequential only
 
