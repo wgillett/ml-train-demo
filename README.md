@@ -5,7 +5,7 @@ Experiment with creating a minimal ML training demo
 
 - [x] Step 1 — local `kind` cluster
 - [x] Step 2 — containerized training job (CPU-only)
-- [ ] Step 3 — training job on local Kubernetes
+- [x] Step 3 — training job on local Kubernetes
 - [ ] Step 4 — Argo Workflows (local)
 - [ ] Step 5 — CI image build/push
 - [ ] Step 6 — Terraform for EKS (stretch)
@@ -40,3 +40,17 @@ docker run --rm ml-train-demo      # containerized
 `torch` is pinned to the CPU-only wheel index
 (`download.pytorch.org/whl/cpu`) so the image doesn't pull in CUDA/NVIDIA
 dependencies it can't use locally.
+
+## Running on local Kubernetes
+
+```sh
+docker build -t ml-train-demo:local .
+kind load docker-image ml-train-demo:local
+kubectl apply -f k8s/training-job.yaml
+kubectl logs job/ml-train-demo
+kubectl delete -f k8s/training-job.yaml
+```
+
+`kind` runs its own containerd, separate from the host Docker image store,
+so a locally built image must be loaded into the cluster with
+`kind load docker-image` before a `Job` can reference it.
