@@ -98,12 +98,22 @@ pulling the image from Docker Hub, which fails for a local-only image.
 
 `terraform/bootstrap` provisions the AWS-side prerequisites for CI/EKS: a
 least-privilege personal IAM user, the ECR repo for the training image,
-and the GitHub OIDC provider CI will assume a role against. See
-`terraform/bootstrap/README.md` for first-apply instructions (it needs an
-initial admin credential, since Terraform can't create its own).
+the GitHub OIDC provider, and the IAM role GitHub Actions assumes to push
+images (scoped to `push` on `main` in this one repo, permitted only to
+push to this one ECR repo, capped by a `PowerUserAccess` permissions
+boundary). See `terraform/bootstrap/README.md` for first-apply
+instructions (it needs an initial admin credential, since Terraform can't
+create its own).
 
-Outputs (ECR URL, OIDC provider ARN, IAM user name) are available via
+Outputs (ECR URL, OIDC/role ARNs, IAM user name) are available via
 `terraform output` in that directory rather than copied here, so this
-stays correct as the account evolves. The two values Step 5's CI workflow
-needs are already set as GitHub repo variables (`ECR_REPOSITORY_URL`,
-`AWS_OIDC_PROVIDER_ARN`).
+stays correct as the account evolves. The values the CI workflow needs
+are set as GitHub repo variables (`ECR_REPOSITORY_URL`,
+`AWS_GITHUB_ACTIONS_ROLE_ARN`).
+
+## CI (GitHub Actions → ECR)
+
+`.github/workflows/ci.yml` builds the training image and pushes it to
+ECR on every push to `main`, tagged by commit SHA. Authenticates via
+OIDC (`aws-actions/configure-aws-credentials`, assuming the role from
+`terraform/bootstrap`) — no static AWS keys stored in GitHub.

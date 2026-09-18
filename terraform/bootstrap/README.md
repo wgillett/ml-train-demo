@@ -2,8 +2,8 @@
 
 Creates the AWS-side prerequisites for Step 5/6: a least-privilege personal
 IAM user for local AWS CLI/Terraform use, the ECR repository for the
-training image, and the GitHub OIDC provider (so CI can later assume a
-role instead of using static keys).
+training image, the GitHub OIDC provider, and the IAM role GitHub Actions
+assumes through it to push images (`ci.tf` — no static AWS keys in CI).
 
 ## Applying this for the first time
 
@@ -38,7 +38,13 @@ that step for you.
 
 ## What's deliberately not here
 
-- The GitHub Actions IAM role that trusts the OIDC provider above — that's
-  created alongside the CI workflow itself (Step 5), not here, since it
-  needs to reference the specific repo/workflow trust condition.
 - VPC/EKS resources — Step 6, a separate `terraform/eks/` module.
+
+## After adding/changing the CI role (`ci.tf`)
+
+Set the two GitHub repo variables the workflow reads, after `apply`:
+
+```sh
+gh variable set ECR_REPOSITORY_URL --body "$(terraform output -raw ecr_repository_url)"
+gh variable set AWS_GITHUB_ACTIONS_ROLE_ARN --body "$(terraform output -raw github_actions_role_arn)"
+```

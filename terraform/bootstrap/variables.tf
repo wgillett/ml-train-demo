@@ -21,3 +21,15 @@ variable "ecr_repository_name" {
   type        = string
   default     = "ml-train-demo"
 }
+
+variable "github_repository" {
+  description = "GitHub \"org/repo\" allowed to assume the CI role via OIDC"
+  type        = string
+  default     = "wgillett/ml-train-demo"
+}
+
+variable "github_ci_branch" {
+  description = "Branch whose pushes may assume the CI role (kept narrow; broaden if PR builds are wanted later)"
+  type        = string
+  default     = "main"
+}

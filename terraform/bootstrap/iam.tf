@@ -75,21 +75,15 @@ data "aws_iam_policy_document" "iam_bootstrap" {
   }
 
   statement {
-    sid    = "ScopedRoleManagement"
-    effect = "Allow"
-    actions = [
-      "iam:CreateRole",
-      "iam:DeleteRole",
-      "iam:GetRole",
-      "iam:UpdateAssumeRolePolicy",
-      "iam:TagRole",
-      "iam:ListRolePolicies",
-      "iam:ListAttachedRolePolicies",
-      "iam:AttachRolePolicy",
-      "iam:DetachRolePolicy",
-      "iam:PutRolePolicy",
-      "iam:DeleteRolePolicy",
-    ]
+    # Split from ScopedRoleManagement below: the iam:PermissionsBoundary
+    # condition key is only present in CreateRole's request context. If
+    # this condition were combined into one statement with GetRole,
+    # AttachRolePolicy, etc. (as it was originally), the missing context
+    # key on those other actions would make the condition evaluate false
+    # and silently deny them too — not just CreateRole.
+    sid       = "ScopedRoleCreate"
+    effect    = "Allow"
+    actions   = ["iam:CreateRole"]
     resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.resource_prefix}-*"]
 
     condition {
@@ -97,6 +91,25 @@ data "aws_iam_policy_document" "iam_bootstrap" {
       variable = "iam:PermissionsBoundary"
       values   = [local.role_permissions_boundary_arn]
     }
+  }
+
+  statement {
+    sid    = "ScopedRoleManagement"
+    effect = "Allow"
+    actions = [
+      "iam:DeleteRole",
+      "iam:GetRole",
+      "iam:UpdateAssumeRolePolicy",
+      "iam:TagRole",
+      "iam:ListRolePolicies",
+      "iam:ListAttachedRolePolicies",
+      "iam:ListInstanceProfilesForRole",
+      "iam:AttachRolePolicy",
+      "iam:DetachRolePolicy",
+      "iam:PutRolePolicy",
+      "iam:DeleteRolePolicy",
+    ]
+    resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.resource_prefix}-*"]
   }
 
   statement {
