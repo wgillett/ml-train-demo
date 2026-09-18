@@ -16,6 +16,11 @@ variable "cluster_version" {
   default     = "1.34"
 }
 
+variable "cluster_endpoint_public_access_cidrs" {
+  description = "CIDR blocks allowed to reach the public EKS API endpoint. Required, no default — so this can never accidentally apply as world-open (the module's own default is 0.0.0.0/0). Set via a gitignored terraform.tfvars or -var, e.g. [\"<your-ip>/32\"]. Find your current IP with: curl -s https://checkip.amazonaws.com"
+  type        = list(string)
+}
+
 variable "vpc_cidr" {
   description = "CIDR block for the cluster's VPC"
   type        = string

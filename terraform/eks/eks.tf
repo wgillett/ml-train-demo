@@ -1,8 +1,7 @@
 # CPU-only managed node group only — GPU node group, IRSA, and Argo CD
 # are explicitly deferred (see CLAUDE.md). Cluster secret encryption via
-# a customer-managed KMS key and control-plane log export are both left
-# disabled: neither is needed for this demo and both carry a small
-# ongoing cost (~$1/mo for the KMS key, plus CloudWatch Logs ingestion).
+# a customer-managed KMS key is left disabled: not needed for this demo
+# and carries a small ongoing cost (~$1/mo for the KMS key).
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 20.0"
@@ -13,9 +12,27 @@ module "eks" {
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
 
-  cluster_endpoint_public_access = true
+  # Public access is restricted to var.cluster_endpoint_public_access_cidrs
+  # (required, no default) rather than the module's 0.0.0.0/0 default —
+  # otherwise the Kubernetes API endpoint is reachable from the entire
+  # internet (auth still required to do anything, but there's no reason
+  # to accept connections from IPs that could never authenticate anyway).
+  cluster_endpoint_public_access       = true
+  cluster_endpoint_public_access_cidrs = var.cluster_endpoint_public_access_cidrs
+
+  # Security-relevant control-plane audit trail. Omits controllerManager/
+  # scheduler logs (operational, not security-relevant, and add volume)
+  # to keep the small CloudWatch Logs cost this adds down.
+  cluster_enabled_log_types              = ["api", "audit", "authenticator"]
+  cloudwatch_log_group_retention_in_days = 7
 
   cluster_encryption_config = {}
+
+  # Without this, the module does NOT automatically grant the creating
+  # IAM principal any Kubernetes access — IAM auth to AWS succeeds but
+  # kubectl fails with "the server has asked for the client to provide
+  # credentials" since there's no RBAC mapping at all for that identity.
+  enable_cluster_creator_admin_permissions = true
 
   # IRSA (pod-level IAM via a cluster-specific OIDC provider) is
   # explicitly deferred per CLAUDE.md — disable it here rather than

@@ -33,6 +33,17 @@ resource "aws_iam_user_policy_attachment" "power_user" {
 # creation will be denied by the condition below.
 locals {
   role_permissions_boundary_arn = "arn:aws:iam::aws:policy/PowerUserAccess"
+
+  # Before the SLR exists, GetRole (called by name, not ARN) can't
+  # resolve a real object to find its actual path, so IAM authorizes
+  # against the *bare* role ARN (no "aws-service-role/<service>/"
+  # prefix) rather than the path it will actually get once created.
+  # Grant both forms — the bare one for this first-time check, the
+  # full one for once the role actually exists.
+  eks_nodegroup_slr_arns = [
+    "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/AWSServiceRoleForAmazonEKSNodegroup",
+    "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/aws-service-role/eks-nodegroup.amazonaws.com/AWSServiceRoleForAmazonEKSNodegroup",
+  ]
 }
 
 # Fills the IAM gap PowerUserAccess leaves, scoped to this project's
@@ -101,7 +112,7 @@ data "aws_iam_policy_document" "iam_bootstrap" {
     sid       = "EksNodegroupServiceLinkedRoleRead"
     effect    = "Allow"
     actions   = ["iam:GetRole"]
-    resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/aws-service-role/eks-nodegroup.amazonaws.com/AWSServiceRoleForAmazonEKSNodegroup"]
+    resources = local.eks_nodegroup_slr_arns
   }
 
   statement {
@@ -112,7 +123,7 @@ data "aws_iam_policy_document" "iam_bootstrap" {
     sid       = "EksNodegroupServiceLinkedRoleCreate"
     effect    = "Allow"
     actions   = ["iam:CreateServiceLinkedRole"]
-    resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/aws-service-role/eks-nodegroup.amazonaws.com/AWSServiceRoleForAmazonEKSNodegroup"]
+    resources = local.eks_nodegroup_slr_arns
 
     condition {
       test     = "StringEquals"

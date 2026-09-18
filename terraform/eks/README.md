@@ -28,10 +28,10 @@ EKS silently switches to "extended support" pricing — an **extra
 the current EKS Kubernetes version support status before applying, not
 just whether a given version number is accepted.
 
-Call it **~$3-4/day** while it's up (standard support). Kept as cheap as reasonably
-possible: single shared NAT (not one per AZ), one small node, no
-customer-managed KMS key for secret encryption, no control-plane log
-export to CloudWatch.
+Call it **~$3-4/day** while it's up (standard support), plus a few cents
+for CloudWatch Logs from the audit trail below. Kept as cheap as
+reasonably possible otherwise: single shared NAT (not one per AZ), one
+small node, no customer-managed KMS key for secret encryption.
 
 **If you do apply this, tear it down the same session**
 (`terraform destroy`) rather than leaving it running between demo
@@ -49,6 +49,28 @@ terraform plan
 `plan` costs nothing and needs no destructive follow-up — it's a
 read-only look at what *would* be created. This is the intended stopping
 point per CLAUDE.md unless AWS budget/time allows going further.
+
+## Security notes
+
+- **The EKS API endpoint is public but CIDR-restricted.** By default the
+  module would open it to `0.0.0.0/0`; `cluster_endpoint_public_access_cidrs`
+  is a required variable (no default) specifically so this can never
+  apply as world-open. Set it to your own IP before applying:
+  ```sh
+  echo 'cluster_endpoint_public_access_cidrs = ["'"$(curl -s https://checkip.amazonaws.com)"'/32"]' > terraform.tfvars
+  ```
+  (`terraform.tfvars` is gitignored — never commit your IP.) Reaching the
+  endpoint still requires valid IAM credentials either way; this just
+  stops unauthenticated internet hosts from connecting to it at all.
+- **Control-plane audit logging is on** (`api`, `audit`, `authenticator`
+  log types → CloudWatch, 7-day retention) — the security-relevant
+  subset, omitting the higher-volume `controllerManager`/`scheduler`
+  logs to keep the small added cost down.
+- `enable_cluster_creator_admin_permissions = true` means whoever applies
+  this (the `ml-train-demo-admin` IAM user) gets Kubernetes cluster-admin
+  automatically. That user's AWS credentials are therefore also a
+  Kubernetes cluster-admin credential — keep MFA on it and treat the
+  access key accordingly.
 
 ## If applying
 
