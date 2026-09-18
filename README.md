@@ -93,3 +93,17 @@ kubectl -n argo logs -l workflows.argoproj.io/workflow=<workflow-name> -c main
 Note: the container's `command` is specified explicitly in the workflow
 template — Argo's executor otherwise tries to look up the entrypoint by
 pulling the image from Docker Hub, which fails for a local-only image.
+
+## AWS bootstrap (Terraform)
+
+`terraform/bootstrap` provisions the AWS-side prerequisites for CI/EKS: a
+least-privilege personal IAM user, the ECR repo for the training image,
+and the GitHub OIDC provider CI will assume a role against. See
+`terraform/bootstrap/README.md` for first-apply instructions (it needs an
+initial admin credential, since Terraform can't create its own).
+
+Outputs (ECR URL, OIDC provider ARN, IAM user name) are available via
+`terraform output` in that directory rather than copied here, so this
+stays correct as the account evolves. The two values Step 5's CI workflow
+needs are already set as GitHub repo variables (`ECR_REPOSITORY_URL`,
+`AWS_OIDC_PROVIDER_ARN`).
