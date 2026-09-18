@@ -2,15 +2,23 @@
 
 ## Project Purpose
 
-Demonstration project for a Senior Platform Engineer, ML Infrastructure application (Deep Genomics). Goal: show competence across the infra/MLOps seam described in that JD — Terraform, Kubernetes (EKS), GitOps, containerized ML workloads, observability, documentation discipline. Not a research project; the ML workload is a vehicle for exercising the platform.
+Cook up a simple ML training demo as a learning exercise.
 
 Time budget: ~1 day for initial scope. Optimize for a working, demonstrable slice over a complete system. Prioritize local testability; anything requiring AWS GPU capacity is deferred and clearly marked.
+
+## Notes on the GCP → AWS Substitution
+
+Original plan targeted GKE; this project targets EKS due to existing AWS familiarity and time constraints. Terraform, Kubernetes, Argo, and Helm patterns are cloud-agnostic. Known AWS-specific deltas to call out in README:
+- IRSA replaces GCP Workload Identity for pod IAM permissions.
+- GPU node groups on EKS use managed node groups + GPU AMI + device plugin, rather than GKE's more turnkey GPU node pool support.
+- S3 replaces GCS for object storage.
+- ECR (with GitHub OIDC federation) replaces GHCR/Artifact Registry as the CI image registry — chosen over GHCR so the demo shows AWS-native IAM patterns, at the cost of making Step 5 AWS-dependent instead of local-only.
 
 ## Target Architecture (end state, not day 1)
 
 - **IaC**: Terraform — VPC, EKS cluster, managed node group (GPU node group added later)
 - **Orchestration**: Argo Workflows (training job), Argo CD (GitOps deploy)
-- **CI**: GitHub Actions — build/push container image
+- **CI**: GitHub Actions — build/push container image to AWS ECR, authenticated via GitHub OIDC → IAM role (no static AWS keys in CI)
 - **Workload**: containerized PyTorch script, DDP-capable, CPU-only fallback mode
 - **Data**: S3 + Parquet/Arrow for input data access pattern
 - **Observability**: Prometheus + Grafana (job status, resource utilization)
@@ -18,7 +26,7 @@ Time budget: ~1 day for initial scope. Optimize for a working, demonstrable slic
 
 ## Guiding Principles
 
-1. **Local-first**: use `kind` or `minikube` for every component that doesn't strictly require AWS. Only EKS provisioning and GPU scheduling require real AWS.
+1. **Local-first**: use `kind` or `minikube` for every component that doesn't strictly require AWS. EKS provisioning, GPU scheduling, and (as of the ECR switch) the CI registry require real AWS.
 2. **Incremental commits**: each step below should be its own commit with a working, demonstrable state. Do not let scope creep merge steps.
 3. **Document as you go**: every step gets a short README/runbook note before moving to the next. This is itself a signal for the application — don't defer it to "later."
 4. **CPU-only is an acceptable stopping point.** GPU scheduling is a stretch goal, not a blocker to a demonstrable result.
@@ -47,12 +55,15 @@ Work top to bottom. Stop at whatever step you reach — each is a coherent check
 - Convert the `Job` into an Argo `Workflow` (single-step is fine for now).
 - Commit: "training job orchestrated via Argo Workflows (local)"
 
-### Step 5 — CI pipeline (30–45 min)
-- GitHub Actions: build image on push, push to a registry (GHCR is simplest, no AWS dependency).
-- Commit: "CI builds and pushes training image"
+### Step 5 — CI pipeline (45–75 min)
+- AWS: create an ECR repository and an IAM role trusted via GitHub OIDC (no long-lived AWS keys in CI). This is the first step that requires an AWS account/credentials — everything before it stays local-only.
+- GitHub Actions: build image on push, authenticate via OIDC, push to ECR.
+- Document the OIDC trust setup (role, repo/branch condition) in README since it won't be obvious from the workflow file alone.
+- Commit: "CI builds and pushes training image to ECR"
 
 ### Step 6 — Terraform for EKS (60–90 min, stretch)
 - Terraform: VPC + EKS cluster, CPU-only managed node group. Do not apply unless AWS budget/time allows — validate with `terraform plan` if applying is out of scope for the day.
+- Managed node group's default IAM policy already grants ECR pull access, so no extra wiring is needed to run the Step 5 image on this cluster.
 - Document in README whether this was actually applied or only plan-validated.
 - Commit: "Terraform for EKS cluster (plan-validated / applied)"
 
@@ -77,10 +88,3 @@ State this list explicitly in the README rather than implying the project is mor
 - Commit messages: short, imperative, one checkpoint each.
 - Every step ends with something runnable — no "half-wired" commits.
 - Prefer boring, readable code over cleverness; this project is a demonstration of platform judgment, not novel ML work.
-
-## Notes on the GCP → AWS Substitution
-
-Original plan targeted GKE; this project targets EKS due to existing AWS familiarity and time constraints. Terraform, Kubernetes, Argo, and Helm patterns are cloud-agnostic. Known AWS-specific deltas to call out in README:
-- IRSA replaces GCP Workload Identity for pod IAM permissions.
-- GPU node groups on EKS use managed node groups + GPU AMI + device plugin, rather than GKE's more turnkey GPU node pool support.
-- S3 replaces GCS for object storage.
