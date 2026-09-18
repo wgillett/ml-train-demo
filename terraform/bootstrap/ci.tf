@@ -18,10 +18,18 @@ data "aws_iam_policy_document" "github_actions_trust" {
       values   = ["sts.amazonaws.com"]
     }
 
+    # GitHub's `sub` claim now embeds immutable numeric owner/repo IDs
+    # (e.g. "repo:org@123/repo@456:ref:refs/heads/main") rather than the
+    # classic "repo:org/repo:ref:refs/heads/main" format, so matching it
+    # directly is fragile. AWS also requires (as of a hardening rollout)
+    # that a GitHub OIDC trust policy condition on sub or job_workflow_ref
+    # specifically — arbitrary claims like `repository`/`ref` alone are
+    # rejected at the API level. job_workflow_ref pins this to one exact
+    # workflow file and branch, which is what we want anyway.
     condition {
       test     = "StringEquals"
-      variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:ref:refs/heads/${var.github_ci_branch}"]
+      variable = "token.actions.githubusercontent.com:job_workflow_ref"
+      values   = ["${var.github_repository}/.github/workflows/ci.yml@refs/heads/${var.github_ci_branch}"]
     }
   }
 }
